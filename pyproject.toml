@@ -1,0 +1,42 @@
+[project]
+name = "taskflow-api"
+version = "1.0.0"
+requires-python = ">=3.12"
+
+# ---------- ruff: проверка стиля ----------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "N", "SIM"]
+# B008: Depends() в аргументах по умолчанию — стандартный приём FastAPI
+ignore = ["B008"]
+
+# ---------- mypy: статический анализатор ----------
+[tool.mypy]
+python_version = "3.12"
+files = ["app"]
+strict = true
+plugins = ["pydantic.mypy"]
+
+# ---------- pytest ----------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "unit: модульные тесты без БД",
+    "integration: тесты API через TestClient с настоящей БД",
+    "db: тесты схемы и ограничений БД, миграций",
+    "e2e: сквозные тесты запущенного сервера по HTTP",
+]
+
+# ---------- coverage ----------
+[tool.coverage.run]
+source = ["app"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = false

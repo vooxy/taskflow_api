@@ -10,3 +10,8 @@ __pycache__
 .vscode
 README.md
 docker-compose.yml
+.github
+.coverage
+htmlcov
+.mypy_cache
+.ruff_cache
