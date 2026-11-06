@@ -1,14 +1,12 @@
 """Общие функции для всех роутеров: поиск записи (404) и сохранение с обработкой ошибок БД (409)."""
 
-from typing import Annotated, TypeVar
+from typing import Annotated
 
 from fastapi import HTTPException, Path, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import Base
-
-ModelT = TypeVar("ModelT", bound=Base)
 
 # id в URL: положительное число в пределах integer PostgreSQL
 PathId = Annotated[int, Path(gt=0, le=2_147_483_647)]
@@ -18,7 +16,7 @@ UNIQUE_VIOLATION = "23505"
 FOREIGN_KEY_VIOLATION = "23503"
 
 
-def get_or_404(db: Session, model: type[ModelT], record_id: int) -> ModelT:
+def get_or_404[ModelT: Base](db: Session, model: type[ModelT], record_id: int) -> ModelT:
     record = db.get(model, record_id)
     if record is None:
         raise HTTPException(

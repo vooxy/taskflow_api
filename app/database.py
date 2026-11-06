@@ -1,13 +1,16 @@
+import logging
 from collections.abc import Generator
 
-from sqlalchemy import MetaData, create_engine
+from sqlalchemy import Engine, MetaData, create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
 engine = create_engine(settings.database_url, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-
 
 # Единые имена ограничений — совпадают с именами в миграции
 NAMING_CONVENTION = {
@@ -23,10 +26,22 @@ class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
-def get_db() -> Generator[Session, None, None]:
+def get_db() -> Generator[Session]:
     """Отдельная сессия на каждый HTTP-запрос."""
     db = SessionLocal()
+    logger.debug("DB session opened")
     try:
         yield db
     finally:
         db.close()
+        logger.debug("DB session closed")
+
+
+def check_database(db_engine: Engine) -> bool:
+    """True, если к БД можно подключиться."""
+    try:
+        with db_engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except SQLAlchemyError:
+        return False
+    return True

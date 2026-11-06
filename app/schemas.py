@@ -2,14 +2,14 @@
 
 *Create — тело POST, *Update — тело PATCH (все поля необязательны), *Read — ответ.
 extra="forbid": служебные поля (id, created_at, ...) от клиента не принимаются -> 422.
-В *Update обязательные в БД поля объявлены как `str = Field(default=None)`:
-поле можно не передавать, но явный null отклоняется с 422.
+В *Update поле можно не передавать, но явный null разрешён только для полей,
+которые в БД могут быть NULL (nullable_fields); для остальных -> 422.
 """
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, ClassVar, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 Role = Literal["operator", "admin"]
 TaskStatus = Literal["open", "in_progress", "done"]
@@ -24,8 +24,25 @@ class InputModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class UpdateModel(InputModel):
+    nullable_fields: ClassVar[frozenset[str]] = frozenset()
+
+    @model_validator(mode="after")
+    def reject_null_for_required(self) -> Self:
+        for name in self.model_fields_set:
+            if getattr(self, name) is None and name not in self.nullable_fields:
+                raise ValueError(f"Field '{name}' cannot be null")
+        return self
+
+
 class ReadModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+
+
+def _not_blank(value: str | None) -> str | None:
+    if value is not None and not value.strip():
+        raise ValueError("body must not be empty")
+    return value
 
 
 # ---------- users ----------
@@ -35,10 +52,10 @@ class UserCreate(InputModel):
     role: Role = "operator"
 
 
-class UserUpdate(InputModel):
-    email: EmailStr = Field(default=None, max_length=255)
-    display_name: str = Field(default=None, min_length=1, max_length=255)
-    role: Role = None
+class UserUpdate(UpdateModel):
+    email: EmailStr | None = Field(default=None, max_length=255)
+    display_name: str | None = Field(default=None, min_length=1, max_length=255)
+    role: Role | None = None
 
 
 class UserRead(ReadModel):
@@ -55,8 +72,10 @@ class ProjectCreate(InputModel):
     description: str | None = None
 
 
-class ProjectUpdate(InputModel):
-    name: str = Field(default=None, min_length=1, max_length=200)
+class ProjectUpdate(UpdateModel):
+    nullable_fields = frozenset({"description"})
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = None
 
 
@@ -73,9 +92,9 @@ class LabelCreate(InputModel):
     color: Color = "#6b7280"
 
 
-class LabelUpdate(InputModel):
-    name: str = Field(default=None, min_length=1, max_length=64)
-    color: Color = None
+class LabelUpdate(UpdateModel):
+    name: str | None = Field(default=None, min_length=1, max_length=64)
+    color: Color | None = None
 
 
 class LabelRead(ReadModel):
@@ -95,14 +114,16 @@ class TaskCreate(InputModel):
     priority: TaskPriority = "medium"
 
 
-class TaskUpdate(InputModel):
-    project_id: Id = None
+class TaskUpdate(UpdateModel):
+    nullable_fields = frozenset({"assignee_id", "label_id", "description"})
+
+    project_id: Id | None = None
     assignee_id: Id | None = None
     label_id: Id | None = None
-    title: str = Field(default=None, min_length=1, max_length=200)
+    title: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = None
-    status: TaskStatus = None
-    priority: TaskPriority = None
+    status: TaskStatus | None = None
+    priority: TaskPriority | None = None
 
 
 class TaskRead(ReadModel):
@@ -119,12 +140,6 @@ class TaskRead(ReadModel):
 
 
 # ---------- comments ----------
-def _not_blank(value: str | None) -> str | None:
-    if value is not None and not value.strip():
-        raise ValueError("body must not be empty")
-    return value
-
-
 class CommentCreate(InputModel):
     task_id: Id
     author_id: Id
@@ -133,8 +148,8 @@ class CommentCreate(InputModel):
     _check_body = field_validator("body")(_not_blank)
 
 
-class CommentUpdate(InputModel):
-    body: str = Field(default=None, min_length=1)
+class CommentUpdate(UpdateModel):
+    body: str | None = Field(default=None, min_length=1)
 
     _check_body = field_validator("body")(_not_blank)
 

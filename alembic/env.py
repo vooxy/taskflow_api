@@ -10,7 +10,8 @@ from app.database import Base
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers=False: не отключать логгеры приложения
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Подключение берётся из переменной окружения DATABASE_URL (через app.config)
 config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))

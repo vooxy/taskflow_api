@@ -19,6 +19,8 @@ services:
     environment:
       # API подключается к БД по имени сервиса "db", а не через localhost
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-taskflow}:${POSTGRES_PASSWORD:-taskflow}@db:5432/${POSTGRES_DB:-taskflow}
+      # уровень логов: DEBUG, INFO, WARNING, ERROR, CRITICAL
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "8000:8000"
     depends_on:
@@ -26,6 +28,34 @@ services:
         condition: service_healthy
     # миграции применяются автоматически при старте (см. CMD в Dockerfile)
     restart: unless-stopped
+
+  # ---------- только для тестов: docker compose --profile test run --rm tests ----------
+  db_test:
+    image: postgres:16
+    profiles: ["test"]
+    environment:
+      POSTGRES_USER: taskflow
+      POSTGRES_PASSWORD: taskflow
+      POSTGRES_DB: taskflow_test
+    # тестовая база хранится в памяти и исчезает после остановки
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskflow -d taskflow_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    profiles: ["test"]
+    environment:
+      TEST_DATABASE_URL: postgresql+psycopg2://taskflow:taskflow@db_test:5432/taskflow_test
+    depends_on:
+      db_test:
+        condition: service_healthy
 
 volumes:
   pgdata:
