@@ -1,5 +1,7 @@
 # TaskFlow API
 
+![CI](https://github.com/vooxy/taskflow_api/actions/workflows/ci.yml/badge.svg)
+
 REST API для управления задачами команды.
 
 **Стек:** Python 3.12, FastAPI, PostgreSQL 16, SQLAlchemy 2, Alembic, Docker Compose.
@@ -129,6 +131,79 @@ docker compose exec api alembic upgrade head
 docker compose exec api alembic current
 ```
 
+## Логирование
+
+Уровень логов задаётся переменной окружения `LOG_LEVEL`: `DEBUG`, `INFO` (по умолчанию), `WARNING`, `ERROR`, `CRITICAL`. Регистр не важен.
+
+```bash
+LOG_LEVEL=DEBUG docker compose up --build
+```
+
+В Windows PowerShell проще задать `LOG_LEVEL=DEBUG` в файле `.env`.
+
+| Уровень | Что пишется |
+|---|---|
+| `DEBUG` | открытие и закрытие сессии БД, начало запроса, параметры фильтров |
+| `INFO` | запуск и остановка, каждый запрос (метод, путь, код, время), создание, изменение и удаление записей |
+| `WARNING` | ошибки клиента: `404`, `409`, `422` |
+| `ERROR` | сбои сервера: БД недоступна в `/health` (`503`), необработанное исключение (`500`) |
+| `CRITICAL` | API запустился, но база данных недоступна |
+
+Пример вывода:
+
+```text
+2026-11-07 12:00:00,123 INFO     app.main: Starting TaskFlow API (log level INFO)
+2026-11-07 12:00:05,456 INFO     app.routers.tasks: Task 1 created
+2026-11-07 12:00:05,457 INFO     app.main: POST /v1/tasks -> 201 (12.3 ms)
+2026-11-07 12:00:07,890 WARNING  app.main: GET /v1/tasks/99 -> 404: Task not found
+```
+
+## Тесты
+
+Тесты написаны на `pytest` и разделены на четыре вида (каталог `tests/`):
+
+| Папка | Маркер | Что проверяет |
+|---|---|---|
+| `tests/unit` | `unit` | схемы Pydantic, функции 404/409 (с mock-сессией), настройки и логирование, без БД |
+| `tests/integration` | `integration` | все эндпоинты через `TestClient` с настоящей PostgreSQL, коды ответов, фильтры, логи |
+| `tests/db` | `db` | ограничения прямо в БД: `UNIQUE`, `CHECK`, `NOT NULL`, внешние ключи, `CASCADE` / `SET NULL` / `RESTRICT`, миграции up/down |
+| `tests/e2e` | `e2e` | запускает настоящий сервер Uvicorn и проходит весь сценарий из задания по HTTP, включая перезапуск |
+
+Покрытие кода (`app/`) равно **100%** (строки и ветвления). Порог задан в `pyproject.toml`: если покрытие станет меньше 100%, тесты упадут.
+
+Тестам нужна **отдельная** база в переменной `TEST_DATABASE_URL`. Перед каждым тестом её таблицы очищаются, поэтому рабочую базу указывать нельзя.
+
+Запуск через Docker (ничего устанавливать не нужно, тестовая БД поднимается сама):
+
+```bash
+docker compose --profile test run --rm --build tests
+docker compose --profile test down
+```
+
+Запуск только одного вида тестов:
+
+```bash
+docker compose --profile test run --rm --build tests pytest -m unit
+docker compose --profile test run --rm --build tests pytest -m e2e
+```
+
+## CI
+
+GitHub Actions (`.github/workflows/ci.yml`) запускается при каждом `push` и pull request. В пайплайне три джобы:
+
+1. **Style:** `ruff format --check` и `ruff check` проверяют форматирование и стиль кода.
+2. **Static analysis:** `mypy` в строгом режиме (`strict`) проверяет типы.
+3. **Tests:** `pytest` с PostgreSQL 16 и проверкой покрытия 100%.
+
+Те же проверки локально:
+
+```bash
+pip install -r requirements-dev.txt
+ruff format --check . && ruff check .
+mypy
+pytest --cov
+```
+
 ## Структура проекта
 
 ```text
@@ -137,16 +212,22 @@ docker compose exec api alembic current
 │   ├── main.py            # приложение, подключение роутеров, /health
 │   ├── config.py          # настройки из окружения (DATABASE_URL)
 │   ├── database.py        # engine, сессия, Base
+│   ├── logging_config.py  # настройка логов (LOG_LEVEL)
 │   ├── models.py          # ORM-модели пяти таблиц
 │   ├── schemas.py         # Pydantic-схемы запросов и ответов
 │   └── routers/           # users, projects, labels, tasks, comments + общие функции
 ├── alembic/
 │   ├── env.py
 │   └── versions/          # миграции
+├── tests/                 # unit, integration, db, e2e
+├── .github/workflows/ci.yml
 ├── alembic.ini
+├── pyproject.toml         # настройки ruff, mypy, pytest, coverage
 ├── Dockerfile
+├── Dockerfile.test        # образ для запуска тестов
 ├── docker-compose.yml
 ├── .dockerignore
 ├── .env.example
-└── requirements.txt
+├── requirements.txt
+└── requirements-dev.txt   # инструменты для тестов и проверок
 ```
